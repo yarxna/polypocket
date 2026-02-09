@@ -1,33 +1,29 @@
-# This code attempts to find x in polynomial equations starting from an initial value entered
-# Initially it will do so using Newton's Method
-# In the future I plan to include possible solutions via the Rational Root Theorem (p/q), Briot-Ruffini, Bhaskara, and grouping factoring
-# I also intend to add graphs and visual feedback of the process.
+# This code attempts to find x in polynomial equations (resulting in 0) starting from an initial value entered
 
-# Current state: initial, uses only Newton's Method, does not display anything visually
 # Objective: find the value of x that solves the equation = 0
 
-# Still haven't solved complex roots! I also haven't reviewed to ensure that the Newton method won't diverge (it will).
+# It still doesn't cover irrational roots!!!!!
 
-# Expected results and additional explanations are in the results.tex file
-
-
+# Expected results and additional explanations are in the notes.tex file, which are my supermemo brief notes (that doesn't cover everything as well).
 
 #########################################################################################
 
 from typing import Dict, Union
+import argparse
 
 parts: Dict[int, Union[int, float]] = {}
 
 def parse_polynomial(polynomial: str) -> None:
     global parts
-    polynomial_terms = polynomial.replace(" ", "").replace("-", "+-")
-    if polynomial_terms.startswith("+"): 
-        polynomial_terms = polynomial_terms[1:]
+    polynomial = polynomial.replace(" ", "").replace("−", "-").replace("–", "-")
+    
+    import re
+    terms = re.findall(r'[+-]?[^+-]+', polynomial)
 
-    polynomial_terms_full = polynomial_terms.split("+")
-
-    for term in polynomial_terms_full:
-        
+    for term in terms:
+        if term.startswith("+"):
+            term = term[1:]
+            
         coef: Union[int, float, str] = ""
         exponent: Union[int, str] = ""
 
@@ -68,6 +64,16 @@ def parse_polynomial(polynomial: str) -> None:
         else:
             parts[int(exponent)] = final_coef
 
+# normalize
+def polynomial_to_coeff_list(polynomial: Dict[int, Union[int, float]]) -> list[float]:
+    degree = max(polynomial.keys())
+    coeffs = []
+
+    for d in range(degree, -1, -1):
+        coeffs.append(float(polynomial.get(d, 0.0)))
+
+    return coeffs
+
 
 def test_result_polynomial(unknown: float, polynomial: Dict[int, Union[int, float]]) -> float:
     equation = []
@@ -101,22 +107,162 @@ def use_newton_method(unknown: float, parts_original: Dict[int, Union[int, float
 
     return float(method_result)
 
-if __name__ == "__main__":
-    polynomial_input: str = input("Please enter the polynomial. Example: x^2−5x+6 ")
-    unknown: float = float(input("Now enter the value to be tested as x "))
+def use_rational_root_theorem(coeffs: list[float]) -> list[float]:
+    leading_coefficient = abs(int(coeffs[0]))
+    constant = abs(int(coeffs[-1]))
 
-    parse_polynomial(polynomial_input)
+    leading_divs = find_divisors(leading_coefficient)
+    const_divs = find_divisors(constant)
 
-    derivative: Dict[int, Union[int, float]] = generate_derivative(parts)
+    possibilities = []
+
+    for q in leading_divs:
+        for p in const_divs:
+            r = p / q
+            possibilities.append(r)
+            possibilities.append(-r)
+
+    possibilities = list(set(possibilities))
+    return possibilities
+
+
+
+def find_divisors(number: int) -> list:
+    divisor = number
+    divisors: list[int] = []
+
+    while divisor > 0:
+        if number % divisor == 0:
+            divisors.append(divisor)
+        divisor -= 1
+
+    return divisors
+
+def use_briot_ruffini(root: Union[float, int], polynomial: Dict[int, Union[int, float]]) -> list[Union[int, float]]:
+
+    degree = max(list(polynomial.keys()))
+
+    full_coeffs = []
+    for d in range(degree, -1, -1):
+        full_coeffs.append(polynomial.get(d, 0.0))
+
+    stored = []
+    r_number = full_coeffs[0]
+    stored.append(r_number)
+
+    for i in range(1, len(full_coeffs)):
+        r_number = (r_number * root) + full_coeffs[i]
+        
+        if i < len(full_coeffs) - 1:
+            stored.append(r_number)
+
+    return stored
+
+def use_bhaskara(coefficients: list[float]) -> list[str]:
+    a = coefficients[0]
+    b = coefficients[1]
+    c = coefficients[2]
+
+    delta = (b**2) - (4 * a * c)
     
-    for i in range(100):  
-            current_result: float = test_result_polynomial(unknown, parts)
+    roots = []
 
-            if abs(current_result) < 0.000001:
-                break
+    if delta >= 0:
+        x1 = (-b + (delta**0.5)) / (2 * a)
+        x2 = (-b - (delta**0.5)) / (2 * a)
+        roots.append(f"{x1:.2f}")
+
+        if delta > 0:
+            roots.append(f"{x2:.2f}")
+    else:
+
+        parte_real = -b / (2 * a)
+        parte_imaginaria = (abs(delta)**0.5) / (2 * a)
+        
+        roots.append(f"{parte_real:.2f} + {parte_imaginaria:.2f}i")
+        roots.append(f"{parte_real:.2f} - {parte_imaginaria:.2f}i")
+
+    return roots
+
+# x^2-3x+5 // esse tá difiço porque a raíz é irracional (vou precisar de outros métodos)
+# 2x^3 - 5x^2 - 5 + 12
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="PolyPocket ~ Polynomial Solver\n\n"
+                                     "Enter the equation in the format: 2x^3 - 5x^2 - 5 + 12",
+                                     formatter_class=argparse.RawTextHelpFormatter)
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-n", "--newton", type=str, help="Run Newton's method with the given equation")
+    group.add_argument("-p", "--rational", type=str, help="Run the Rational Root Theorem with the given equation")
+
+    parser.add_argument("-u", "--unknown", type=float, help="Initial guess for Newton's method (required with -n)", default=None)
+
+
+    args = parser.parse_args()
+    parts.clear()
+
+    polynomial_input = args.newton if args.newton else args.rational
+    parse_polynomial(polynomial_input)
+    coeffs = polynomial_to_coeff_list(parts)
+
+    if args.newton:
+        if args.unknown is None:
+            print("Error: Newton's method requires an initial guess (-u).")
+        else:
+            unknown = args.unknown
+            derivative = generate_derivative(parts)
+            found = False
+            
+            for i in range(500):
+                current_result = test_result_polynomial(unknown, parts)
+                if abs(current_result) < 0.000001:
+                    found = True
+                    break
                 
-            unknown = use_newton_method(unknown, parts, derivative)
-            print(f"Attempt {i+1}: x = {unknown:.4f}")
+                d_val = test_result_polynomial(unknown, derivative)
+                if d_val == 0: break
+                
+                unknown = use_newton_method(unknown, parts, derivative)
+                print(f"Attempt {i+1}: x = {unknown:.4f}")
 
-    print("Result found :)")
-    print(f"Final result: {unknown:.2f}")
+            if found:
+                print(f"\nRoot found using Newton's method: {unknown:.4f}")
+            else:
+                print("\nNewton's method failed to converge with this initial guess.")
+
+    elif args.rational:
+        possibilities = use_rational_root_theorem(coeffs)
+        found_roots = []
+        
+        for possibility in possibilities:
+            result = test_result_polynomial(float(possibility), parts)
+            if abs(result) < 1e-5:
+                if possibility not in found_roots:
+                    found_roots.append(possibility)
+        
+        if found_roots:
+            print(f"Rational roots found: {found_roots}")
+            
+            degree = max(parts.keys())
+            current_coeffs = []
+            for d in range(degree, -1, -1):
+                current_coeffs.append(parts.get(d, 0.0))
+            
+ 
+            root_index = 0
+            while len(current_coeffs) > 3 and root_index < len(found_roots):
+                r = found_roots[root_index]
+                print(f"Reducing degree {len(current_coeffs)-1} -> {len(current_coeffs)-2} using root: {r}")
+                
+                temp_dict = {len(current_coeffs)-1-i: c for i, c in enumerate(current_coeffs)}
+                current_coeffs = use_briot_ruffini(r, temp_dict)
+                root_index += 1
+
+            if len(current_coeffs) == 3:
+                print(f"Polynomial reduced to degree 2: {current_coeffs}")
+                final_bhaskara = use_bhaskara(current_coeffs)
+                print(f"Final roots via quadratic formula: {final_bhaskara}")
+            else:
+                print(f"Could not reduce further. Remaining coefficients: {current_coeffs}")
+        else:
+            print("No rational roots found using the Rational Root Theorem.")
